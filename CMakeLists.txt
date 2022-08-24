@@ -9,6 +9,7 @@ project(project_row)
 # Generate External Libraries
 add_subdirectory(./extern/tigr)
 add_subdirectory(./extern/stb)
+add_subdirectory(./extern/miniz)
 
 # Generate Tools
 add_subdirectory(./tools/ImgToC)

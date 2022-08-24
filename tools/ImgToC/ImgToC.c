@@ -56,6 +56,7 @@
 #define STBI_NO_HDR
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
+#include "miniz.h"
 
 #define eprintf(...) fprintf(stderr, __VA_ARGS__)
 
@@ -71,6 +72,7 @@ static void printUsage()
 struct image
 {
 	unsigned char* data;
+	unsigned long len;
 	int w;
 	int h;
 	int format; // 3: RGB, 4: RGBA
@@ -89,14 +91,30 @@ static struct image loadImage(const char* imgFileName)
 	
 	int bppToUse = 4;
 	// no alpha => use RGB, else use RGBA
-	if(ret.format == 1 || ret.format == 3) bppToUse = 3;
+	// Commenting out to force 4 bpp
+	//if(ret.format == 1 || ret.format == 3) bppToUse = 3;
 	
-	ret.data = stbi_load(imgFileName, &ret.w, &ret.h, &ret.format, bppToUse);
-	if(ret.data == NULL)
+	unsigned char* raw = stbi_load(imgFileName, &ret.w, &ret.h, &ret.format, bppToUse);
+	unsigned long raw_len = ret.w * ret.h * bppToUse;
+	if(raw == NULL)
 	{
 		eprintf("ERROR: Couldn't load image file %s: %s!\n", imgFileName, stbi_failure_reason());
 		exit(1);
 	}
+
+	// Compress data
+	ret.len = compressBound(raw_len);
+	ret.data = calloc(ret.len, sizeof(unsigned char));
+	int comp_status = compress(ret.data, &ret.len, raw, raw_len);
+
+	stbi_image_free(raw);
+
+	if (comp_status != Z_OK)
+	{
+		eprintf("ERROR: Couldn't compress image data!\n");
+		exit(1);
+	}
+
 	ret.format = bppToUse;
 	
 	return ret;
@@ -180,9 +198,10 @@ static void writeStructHeader(FILE* out, struct image img, const char* structNam
 	fputs("\tunsigned int height;\n", out);
 	fputs("\tunsigned int bytes_per_pixel; /* 3:RGB, 4:RGBA */\n", out); // I don't support 2:RGB16
 	// the + 1 is for the implicit terminating \0 in the string literal used to initialize pixel_data
-	fprintf(out, "\tunsigned char pixel_data[%d * %d * %d + 1];\n", img.w, img.h, img.format);
+	fputs("\tunsigned long data_len;\n", out);
+	fprintf(out, "\tunsigned char comp_pixel_data[%lu];\n", img.len);
 	fprintf(out, "} %s = {\n", structName);
-	fprintf(out, "\t%d, %d, %d,\n", img.w, img.h, img.format);
+	fprintf(out, "\t%d, %d, %d, %lu,\n", img.w, img.h, img.format, img.len);
 }
 
 static int addOctalEscapeToFile(FILE* out, int b)
@@ -249,7 +268,7 @@ static void writeStructData(FILE* out, struct image img)
 {
 	int i;
 	int lineChars = 0;
-	int numBytes = img.w * img.h * img.format;
+	int numBytes = img.len;
 	for(i=0; i<numBytes; ++i)
 	{
 		if(lineChars == 0)
@@ -376,6 +395,6 @@ int main(int argc, char** argv)
 	
 	writeCfile(img, outFile);
 	
-	stbi_image_free(img.data);
+	free(img.data);
 	return 0;
 }

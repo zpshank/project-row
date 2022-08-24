@@ -5,6 +5,7 @@ target_link_libraries(img2c
     PRIVATE
         stb
         m
+        miniz
 )
 target_sources(img2c
     PRIVATE
